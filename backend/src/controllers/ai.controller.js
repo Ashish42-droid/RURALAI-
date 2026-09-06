@@ -284,7 +284,12 @@ export const analyzeImageAI = async (req, res) => {
 
     const observation = await analyzeInjuryImage(file ? file.buffer : null, file ? file.mimetype : 'image/jpeg');
 
-    let finalImageUrl = observation.image_url;
+    // Starts null, not at the data URI analyzeInjuryImage built to feed the
+    // vision model. Seeding it with that URI meant the megabyte travelled back
+    // to the phone whenever storage was skipped or failed -- which is exactly
+    // when it was least wanted, because that is the path with no visit to
+    // attach the photo to. A signed URL replaces this only if the upload lands.
+    let finalImageUrl = null;
 
     /*
      * Which patient this photograph belongs to comes from the visit, not the

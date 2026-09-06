@@ -96,13 +96,34 @@ app.get(HAS_FRONTEND ? '/api' : ['/', '/api'], (req, res) => {
   });
 });
 
-// Health Check Endpoint
+/*
+ * Health check, and the answer to "is what I just pushed actually running?"
+ *
+ * Without a build marker there was no way to tell a deployed commit from a
+ * stale one except by finding some behaviour that differed -- and when a
+ * release changes one line, there may be no such behaviour. That cost a real
+ * misdiagnosis: a deploy was reported as not having happened, on the strength
+ * of a probe that could not have detected it either way.
+ *
+ * Railway injects RAILWAY_GIT_COMMIT_SHA at build time. started_at
+ * distinguishes a fresh container from one that has merely been running a
+ * while, so a restart is visible even when the commit is unchanged.
+ */
+const STARTED_AT = new Date().toISOString();
+const COMMIT_SHA =
+  process.env.RAILWAY_GIT_COMMIT_SHA
+  || process.env.GIT_COMMIT_SHA
+  || process.env.SOURCE_VERSION
+  || null;
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ONLINE',
     system: 'Virtual Village Clinic AI Backend API',
     timestamp: new Date().toISOString(),
-    version: '1.0.0'
+    version: '1.0.0',
+    commit: COMMIT_SHA ? COMMIT_SHA.slice(0, 7) : 'unknown',
+    started_at: STARTED_AT
   });
 });
 
