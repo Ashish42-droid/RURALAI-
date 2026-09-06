@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Camera, Loader2, CheckCircle2, AlertTriangle, X, ScanLine, Upload, Aperture } from 'lucide-react';
 import api from '../services/api';
+import { prepareAll, DOCUMENT } from '../services/imagePrep';
 
 /**
  * Read a health / ABHA card to help fill the registration form.
@@ -108,8 +109,11 @@ export default function HealthCardScanner({ form, onApply }) {
     setResult(null);
     setApplied({});
 
+    // Same treatment as any other document: shrunk on the device before it
+    // travels. A card photographed at full camera resolution is several
+    // megabytes of uplink for text that reads fine at a fraction of it.
     const body = new FormData();
-    for (const f of files) body.append('files', f);
+    for (const f of await prepareAll(files, DOCUMENT)) body.append('files', f);
 
     try {
       const res = await api.post('/documents/health-card', body, {

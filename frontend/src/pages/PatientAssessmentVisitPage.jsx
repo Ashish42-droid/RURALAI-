@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Mic, Upload, FileText, Camera, Bot, ShieldCheck, ArrowRight, CheckCircle2, AlertTriangle, Activity, User, HeartPulse, RefreshCw, BookOpen, AlertOctagon, Download, Pill, PhoneCall, ArrowLeft, MicOff, Globe, Video, Send, ShieldAlert, Printer, Calendar, Trash2 } from 'lucide-react';
 import api, { describeTransportFailure } from '../services/api';
+import { prepareAll, WOUND, DOCUMENT, formatBytes } from '../services/imagePrep';
 import RiskBadge from '../components/RiskBadge';
 import OCRVerificationModal from '../components/OCRVerificationModal';
 import ScheduleConsultationModal from '../components/ScheduleConsultationModal';
@@ -82,6 +83,9 @@ export default function PatientAssessmentVisitPage() {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  // What the upload is doing right now — shown in place of a bare spinner so a
+  // slow uplink reads as progress rather than as a hang.
+  const [uploadStatus, setUploadStatus] = useState(null);
   const [visionObservation, setVisionObservation] = useState(null);
   const [visionObservations, setVisionObservations] = useState([]);
 
@@ -255,14 +259,29 @@ export default function PatientAssessmentVisitPage() {
     setBusy(true);
     try {
       const vId = await ensureVisit();
+
+      // Shrunk before it leaves the phone. Documents keep more resolution than
+      // wound photos because OCR has to resolve printed characters; a PDF is
+      // passed through untouched.
+      setUploadStatus('Preparing pages…');
+      const before = files.reduce((n, f) => n + f.size, 0);
+      const prepared = await prepareAll(files, DOCUMENT);
+      const after = prepared.reduce((n, f) => n + f.size, 0);
+
       const formData = new FormData();
-      files.forEach((f) => formData.append('files', f));
+      prepared.forEach((f) => formData.append('files', f));
       formData.append('aadhaar_number', patientId);
       formData.append('visit_id', vId);
       formData.append('document_type', documentType);
 
+      const saved = after < before ? ` (${formatBytes(before)} → ${formatBytes(after)})` : '';
       const res = await api.post('/documents/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => {
+          if (!e.total) return;
+          const pct = Math.round((e.loaded / e.total) * 100);
+          setUploadStatus(pct < 100 ? `Uploading ${pct}%${saved}` : 'Reading the page…');
+        }
       });
       onDone(res.data);
     } catch (err) {
@@ -271,6 +290,7 @@ export default function PatientAssessmentVisitPage() {
       alert('Document upload failed: ' + formatApiError(err));
     } finally {
       setBusy(false);
+      setUploadStatus(null);
     }
   };
 
@@ -315,13 +335,25 @@ export default function PatientAssessmentVisitPage() {
       const vId = await ensureVisit();
       // Vision reads one photograph at a time — each is a separate observation,
       // and merging them would let one clear shot mask an unreadable one.
+      setUploadStatus('Preparing photograph…');
+      const before = woundFiles.reduce((n, f) => n + f.size, 0);
+      const prepared = await prepareAll(woundFiles, WOUND);
+      const after = prepared.reduce((n, f) => n + f.size, 0);
+      const saved = after < before ? ` (${formatBytes(before)} → ${formatBytes(after)})` : '';
+
       const results = [];
-      for (const file of woundFiles) {
+      for (let i = 0; i < prepared.length; i += 1) {
+        const of = prepared.length > 1 ? ` — photo ${i + 1} of ${prepared.length}` : '';
         const formData = new FormData();
-        formData.append('image', file);
+        formData.append('image', prepared[i]);
         formData.append('visit_id', vId);
         const res = await api.post('/vision/analyze', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (e) => {
+            if (!e.total) return;
+            const pct = Math.round((e.loaded / e.total) * 100);
+            setUploadStatus(pct < 100 ? `Uploading ${pct}%${saved}${of}` : `Looking at the photograph…${of}`);
+          }
         });
         results.push(res.data);
       }
@@ -337,6 +369,7 @@ export default function PatientAssessmentVisitPage() {
       alert('Wound photo analysis failed: ' + formatApiError(err));
     } finally {
       setUploadingImage(false);
+      setUploadStatus(null);
     }
   };
 
@@ -954,7 +987,7 @@ export default function PatientAssessmentVisitPage() {
                 className="w-full py-2.5 rounded-field bg-gov-600 hover:bg-gov-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-2"
               >
                 {uploadingDoc ? (
-                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Reading prescription…</>
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> {uploadStatus || 'Reading prescription…'}</>
                 ) : (
                   <>Read {prescriptionFiles.length || ''} prescription page{prescriptionFiles.length === 1 ? '' : 's'}</>
                 )}
@@ -998,7 +1031,7 @@ export default function PatientAssessmentVisitPage() {
                 className="w-full py-2.5 rounded-field bg-tier-low hover:opacity-90 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-2"
               >
                 {uploadingReport ? (
-                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Reading report…</>
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> {uploadStatus || 'Reading report…'}</>
                 ) : (
                   <>Read {reportFiles.length || ''} report page{reportFiles.length === 1 ? '' : 's'}</>
                 )}
@@ -1063,7 +1096,7 @@ export default function PatientAssessmentVisitPage() {
                 className="w-full py-2.5 rounded-field bg-gov-600 hover:bg-gov-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-2"
               >
                 {uploadingImage ? (
-                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Analysing…</>
+                  <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> {uploadStatus || 'Analysing…'}</>
                 ) : (
                   <>Analyse {woundFiles.length || ''} photo{woundFiles.length === 1 ? '' : 's'}</>
                 )}
