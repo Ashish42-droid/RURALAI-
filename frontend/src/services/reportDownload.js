@@ -1,3 +1,4 @@
+import { getToken } from './session.js';
 /**
  * Fetch a report PDF and hand it to the user.
  *
@@ -45,7 +46,8 @@ const describeFailure = async (res) => {
 export const downloadVisitReport = async (visitId, type = 'summary', opts = {}) => {
   if (!visitId) return { ok: false, error: 'No visit selected.' };
 
-  const token = localStorage.getItem('vvc_token');
+  // This tab's token — a PDF must be fetched as whoever is signed in HERE.
+  const token = getToken();
   let res;
 
   try {

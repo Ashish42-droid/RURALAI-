@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getToken, clearSession } from './session.js';
 
 const DEPLOYED_API = 'https://ruralai-production-220.up.railway.app/api';
 
@@ -151,7 +152,8 @@ export const describeTransportFailure = (error) => {
 };
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('vvc_token');
+  // This tab's token, not whichever tab signed in most recently.
+  const token = getToken();
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -195,9 +197,8 @@ api.interceptors.response.use(
       (status === 403 &&
         /no longer active|no staff profile|no usable role/i.test(message));
 
-    if (sessionDead && localStorage.getItem('vvc_token')) {
-      localStorage.removeItem('vvc_token');
-      localStorage.removeItem('vvc_user');
+    if (sessionDead && getToken()) {
+      clearSession();
 
       if (!window.location.pathname.startsWith('/login')) {
         window.location.assign('/login');

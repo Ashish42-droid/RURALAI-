@@ -1,31 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
+import { getToken, getUser, setSession, setUser as storeUser, clearSession as wipeSession } from '../services/session.js';
 
 const AuthContext = createContext();
 
-const TOKEN_KEY = 'vvc_token';
-const USER_KEY = 'vvc_user';
-
-const readStoredUser = () => {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    // Corrupt entry should log the user out, not white-screen the app.
-    localStorage.removeItem(USER_KEY);
-    return null;
-  }
-};
-
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(readStoredUser);
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || null);
+  const [user, setUser] = useState(getUser);
+  // Per tab, so signing in as the doctor next door cannot change who this tab
+  // is. See services/session.js.
+  const [token, setToken] = useState(getToken);
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
 
   const clearSession = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    wipeSession();
     setToken(null);
     setUser(null);
   }, []);
@@ -49,7 +37,7 @@ export const AuthProvider = ({ children }) => {
         const res = await api.get('/auth/me');
         if (!cancelled) {
           setUser(res.data.user);
-          localStorage.setItem(USER_KEY, JSON.stringify(res.data.user));
+          storeUser(res.data.user);
         }
       } catch {
         if (!cancelled) clearSession();
@@ -70,8 +58,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await api.post('/auth/login', { email, password });
       const { token: jwtToken, user: profile } = res.data;
-      localStorage.setItem(TOKEN_KEY, jwtToken);
-      localStorage.setItem(USER_KEY, JSON.stringify(profile));
+      setSession(jwtToken, profile);
       setToken(jwtToken);
       setUser(profile);
       return profile;
