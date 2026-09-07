@@ -171,6 +171,27 @@ await client.query(`
   )
 `);
 
+/*
+ * Consultations pin a doctor in place.
+ *
+ * consultations.doctor_id is ON DELETE RESTRICT -- deliberately, because a
+ * doctor who has held consultations should not be able to evaporate and take
+ * the record of them with him. doctor_reviews and prescriptions carry the same
+ * rule and are cleared above; consultations was simply missed, and the table
+ * stayed empty for long enough that nobody noticed.
+ *
+ * It is not empty any more, and the rows that broke the seed were not reachable
+ * by cascade: consultations cascade from visits, but only from is_demo ones,
+ * and a consultation booked through the API during testing hangs off a visit
+ * with no demo flag at all. So they are deleted by their doctor, not by their
+ * visit. notifications cascade from consultations and need no separate pass.
+ */
+await client.query(`
+  DELETE FROM consultations
+  WHERE doctor_id IN (SELECT id FROM staff_profiles WHERE is_demo)
+     OR assistant_id IN (SELECT id FROM staff_profiles WHERE is_demo)
+`);
+
 // Visits reference doctors/assistants and patients.
 // Delete visits before deleting patients/staff.
 await client.query(`
@@ -532,6 +553,48 @@ SEED COMPLETE
     await client.end();
   }
 };
+
+/*
+ * This script destroys data, and something has been calling it on every deploy.
+ *
+ * It deletes every demo staff profile, patient, visit and Supabase Auth user
+ * and rebuilds them from scratch. Run deliberately that is exactly right. Run
+ * automatically on container start it is a data-loss loop, and it has already
+ * cost real state on this deployment: a demo login that stopped working
+ * mid-session because the account was regenerated under a different name, and
+ * doctor schedules that emptied repeatedly for no visible reason.
+ *
+ * So it now refuses unless somebody has said so explicitly, matching
+ * applyV2.js, which guards a comparable amount of destruction the same way.
+ *
+ * The refusal exits 0, not 1, and the reason matters: whatever is invoking this
+ * chains into the server start, so a non-zero exit would stop the container
+ * from booting at all. Refusing to wipe the database must never turn into an
+ * outage. It declines, says why, and gets out of the way.
+ */
+const SEED_CONFIRMED = process.argv.includes('--confirm') || process.env.SEED_CONFIRM === 'yes';
+
+if (!SEED_CONFIRMED) {
+  console.warn(`
+=============================================================
+REFUSING TO RESEED.
+
+This wipes every demo staff profile, patient, visit and Auth
+user on:
+
+  ${process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL).hostname : '(no DATABASE_URL)'}
+
+If a deploy ran this, that is the bug -- remove it from the
+start command. Reseeding on boot destroys live demo state
+every time the container restarts.
+
+To reseed on purpose:
+
+  npm run seed -- --confirm
+=============================================================
+`);
+  process.exit(0);
+}
 
 main().catch((err) => {
   console.error('\nSeed failed:', err.message);
