@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { uploadDocument, verifyDocumentExtraction, listDocuments, scanHealthCard } from '../controllers/document.controller.js';
+import { uploadDocument, verifyDocumentExtraction, listDocuments, scanHealthCard, getDocumentJob } from '../controllers/document.controller.js';
 import { authenticateUser, authorizeRoles } from '../middleware/auth.middleware.js';
 import { denyAdminClinicalAccess } from '../middleware/clinicalAccess.middleware.js';
 import { aiRateLimiter } from '../middleware/rateLimit.middleware.js';
@@ -36,6 +36,11 @@ const anyFiles = (req, res, next) =>
   });
 
 router.get('/', authorizeRoles(ROLES.CLINIC_ASSISTANT, ROLES.DOCTOR), listDocuments);
+
+// The draft, once the reader has finished with it. No AI rate limiter: this
+// costs nothing at a provider, and a health worker whose socket dropped needs
+// to be able to poll for the result they are already waiting on.
+router.get('/jobs/:id', authorizeRoles(ROLES.CLINIC_ASSISTANT, ROLES.DOCTOR), getDocumentJob);
 
 // Every upload spends money at an external model provider.
 router.post('/upload', authorizeRoles(ROLES.CLINIC_ASSISTANT), aiRateLimiter, anyFiles, uploadDocument);

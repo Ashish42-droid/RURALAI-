@@ -28,7 +28,11 @@ export const EVENTS = {
   //   CASE_ASSIGNED    — assistant hands the case to a doctor.
   //   REVIEW_COMPLETED — the doctor's decision travelling back to the assistant.
   CASE_ASSIGNED: 'CASE_ASSIGNED',
-  REVIEW_COMPLETED: 'DOCTOR_REVIEW_COMPLETED'
+  REVIEW_COMPLETED: 'DOCTOR_REVIEW_COMPLETED',
+  // A document finished being read. Carries a job id, never the draft itself:
+  // an extraction duplicated into notifications would sit outside every control
+  // that governs patient documents.
+  DOCUMENT_EXTRACTED: 'DOCUMENT_EXTRACTED'
 };
 
 /**

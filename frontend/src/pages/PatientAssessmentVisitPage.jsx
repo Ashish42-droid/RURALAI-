@@ -8,6 +8,7 @@ import OCRVerificationModal from '../components/OCRVerificationModal';
 import ScheduleConsultationModal from '../components/ScheduleConsultationModal';
 import DoctorSelectGrid from '../components/DoctorSelectGrid';
 import { useAuth } from '../context/AuthContext';
+import { useRealtime } from '../context/RealtimeContext';
 import DemoBadge from '../components/DemoBadge';
 import { maskAadhaar } from '../config/patientFields';
 import FileCaptureInput from '../components/FileCaptureInput';
@@ -86,6 +87,8 @@ export default function PatientAssessmentVisitPage() {
   // What the upload is doing right now — shown in place of a bare spinner so a
   // slow uplink reads as progress rather than as a hang.
   const [uploadStatus, setUploadStatus] = useState(null);
+  // A document being read in the background, so the operator can keep typing.
+  const [readingDoc, setReadingDoc] = useState(null);
   const [visionObservation, setVisionObservation] = useState(null);
   const [visionObservations, setVisionObservations] = useState([]);
 
@@ -280,9 +283,43 @@ export default function PatientAssessmentVisitPage() {
         onUploadProgress: (e) => {
           if (!e.total) return;
           const pct = Math.round((e.loaded / e.total) * 100);
-          setUploadStatus(pct < 100 ? `Uploading ${pct}%${saved}` : 'Reading the page…');
+          setUploadStatus(pct < 100 ? `Uploading ${pct}%${saved}` : 'Sending…');
         }
       });
+
+      /*
+       * 202 means the page is being read and the operator is free.
+       *
+       * They already know the patient's name and the date. Making them watch
+       * 23-29 seconds of model time before they can type it was the most
+       * wasteful thing this screen did. The verification window still opens on
+       * the draft when it lands — the check is unchanged, only the waiting is
+       * gone.
+       */
+      if (res.status === 202 && res.data?.job_id) {
+        setBusy(false);
+        setUploadStatus(null);
+        setReadingDoc(documentType === 'lab_report' ? 'Reading the report…' : 'Reading the prescription…');
+
+        const job = await awaitExtraction(res.data.job_id);
+        setReadingDoc(null);
+
+        if (!job || job.status === 'failed' || job.status === 'timeout') {
+          setApiError(job?.error || 'The page could not be read. Enter the details by hand.');
+          alert('The page could not be read automatically. Enter the details in the verification window.');
+          onDone({ document: { id: job?.document_id || null }, extraction: {}, raw_ocr: '', needs_manual_entry: true });
+          return;
+        }
+        onDone({
+          document: { id: job.document_id },
+          extraction: job.extraction || {},
+          raw_ocr: job.raw_ocr || '',
+          engine: job.engine,
+          needs_manual_entry: false
+        });
+        return;
+      }
+
       onDone(res.data);
     } catch (err) {
       console.error('Document upload error:', err);
@@ -389,6 +426,56 @@ export default function PatientAssessmentVisitPage() {
    * attach a document"), and wrapping them in a status code buried the sentence
    * that actually said what to do.
    */
+  const { subscribe } = useRealtime();
+
+  /**
+   * Wait for a document the server is still reading.
+   *
+   * Two ways the answer can arrive, because the health worker should not lose
+   * their extraction to a dropped socket on a rural connection: the /realtime
+   * notification, and a slow poll behind it. Whichever lands first wins, and
+   * both are torn down together.
+   *
+   * The wait is not blocking. The upload call has already returned and the form
+   * is live — this only decides when the verification window opens.
+   */
+  const awaitExtraction = (jobId) => new Promise((resolve) => {
+    let settled = false;
+    let unsub = () => {};
+    let poll = null;
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      unsub();
+      clearInterval(poll);
+      clearTimeout(giveUp);
+      resolve(value);
+    };
+
+    const fetchJob = async () => {
+      try {
+        const { data } = await api.get(`/documents/jobs/${jobId}`);
+        return data;
+      } catch { return null; }
+    };
+
+    unsub = subscribe((msg) => {
+      if (msg?.event === 'DOCUMENT_EXTRACTED' && msg?.payload?.job_id === jobId) {
+        fetchJob().then(finish);
+      }
+    }) || (() => {});
+
+    poll = setInterval(async () => {
+      const job = await fetchJob();
+      if (job && job.status !== 'queued' && job.status !== 'running') finish(job);
+    }, 4000);
+
+    // The server has its own deadline; this is only the client's backstop so a
+    // lost job cannot leave a "reading…" chip on the screen forever.
+    const giveUp = setTimeout(() => finish(null), 150000);
+  });
+
   const formatApiError = (err) => {
     if (!err) return 'Unknown error';
     if (err.response) {
@@ -980,6 +1067,19 @@ export default function PatientAssessmentVisitPage() {
                 onChange={setPrescriptionFiles}
                 busy={uploadingDoc}
               />
+              {/* The page is being read behind them. Shown once, above both
+                  upload controls, so it is obvious the work is still happening
+                  while the form stays usable. */}
+              {readingDoc && (
+                <div className="flex items-center gap-2 p-2.5 rounded-field bg-gov-50 dark:bg-gov-100 border border-gov-600/30">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-gov-600 dark:text-gov-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-gov-700 dark:text-gov-500">{readingDoc}</p>
+                    <p className="text-[11px] text-ink-muted">Carry on entering what you already know — the details will open for checking when they are ready.</p>
+                  </div>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={handlePrescriptionUpload}

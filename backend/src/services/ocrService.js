@@ -111,7 +111,7 @@ const HEALTH_CARD_SCHEMA = `{
   "year_of_birth": "YYYY if only a year is printed, else empty",
   "card_number": "The card/ABHA number as printed, digits and hyphens only, or empty",
   "confidence": "high" | "medium" | "low",
-  "raw_text_summary": "Everything legible on the card, as plain text"
+  "raw_text_summary": "LEAVE EMPTY when document_type is health_card. Fill it only when the image is NOT a health card, with a short note of what is visible, so the operator can see what was read."
 }`;
 
 const HEALTH_CARD_RULES = `You are reading an Indian health identity card (ABHA card, health insurance card, or state health scheme card) to pre-fill a clinic registration form.
@@ -123,7 +123,8 @@ ABSOLUTE RULES:
 - Many Indian cards print only a year of birth. Put it in year_of_birth and leave date_of_birth empty rather than inventing a day and month.
 - Indian names are frequently transliterated. Transcribe what is printed without "correcting" the spelling.
 - Set confidence to "low" if the image is blurred, cropped, glared or partly obscured, whatever you managed to read.
-- If this is not a health or identity card, set document_type to "other" and leave every field empty.`;
+- If this is not a health or identity card, set document_type to "other" and leave every field empty.
+- Do NOT transcribe the whole card. Registration needs four things: name, sex, date of birth and the card number. A full transcription is output nobody reads, and on a rural connection the operator waits for every word of it.`;
 
 const BASE_RULES = `You are a medical document transcription system for a rural clinic in India.
 

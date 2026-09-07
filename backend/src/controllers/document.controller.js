@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { processMedicalDocument, readHealthCard } from '../services/ocrService.js';
+import { contentHash, findFreshExtraction, createJob, processJob, getJob } from '../services/documentJobs.js';
 import { logAuditEvent } from '../middleware/audit.middleware.js';
 import { AADHAAR_RE, digitsOnly } from '../services/patientFields.js';
 
@@ -40,57 +41,142 @@ export const uploadDocument = async (req, res) => {
       .maybeSingle();
     if (!patient) return res.status(404).json({ error: 'No such patient at this clinic.' });
 
-    // Read all pages as one document.
-    const result = await processMedicalDocument(files, kind);
+    /*
+     * The same page, for the same patient, already read.
+     *
+     * Worth checking because the case it catches is the one that actually
+     * happens: a health worker retries a page that looked like it failed, or
+     * re-photographs one they already sent. Both halves of the key matter —
+     * see findFreshExtraction for why the hash alone would be a cross-patient
+     * leak rather than a cache.
+     */
+    const hash = contentHash(files);
+    const cached = await findFreshExtraction({ patientId: aadhaar, hash });
 
-    const { data: doc, error } = await supabaseAdmin
-      .from('patient_documents')
-      .insert([{
-        patient_id: aadhaar,
-        visit_id: visit_id || null,
-        document_type: kind,
-        mime_type: files[0].mimetype,
-        ocr_text: result.raw_text || null,
-        extracted_data: result.extracted_data || {},
-        uploaded_by: req.user.id
-      }])
-      .select()
-      .single();
+    const writeDocumentRow = async (extraction, rawText) => {
+      const { data, error } = await supabaseAdmin
+        .from('patient_documents')
+        .insert([{
+          patient_id: aadhaar,
+          visit_id: visit_id || null,
+          document_type: kind,
+          mime_type: files[0].mimetype,
+          ocr_text: rawText || null,
+          extracted_data: extraction || {},
+          // Deliberately NOT verified. This row is a draft until a person
+          // confirms it through /:id/verify, and neither the cache nor the
+          // async path may shortcut that.
+          uploaded_by: req.user.id
+        }])
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data;
+    };
 
-    if (error) {
-      console.error('document insert failed:', error.message);
-      return res.status(500).json({ error: 'The document could not be saved.' });
+    if (cached) {
+      const doc = await writeDocumentRow(cached.extraction, cached.raw_text);
+      await logAuditEvent({
+        actorId: req.user.id, actorRole: req.user.role,
+        action: 'DOCUMENT_UPLOADED', entityType: 'PATIENT_DOCUMENTS', entityId: doc.id,
+        metadata: { document_type: kind, files: files.length, engine: cached.engine, cache: 'hit' },
+        ip: req.ip
+      });
+      return res.status(201).json({
+        cached: true,
+        document: doc,
+        extraction: cached.extraction,
+        raw_ocr: cached.raw_text,
+        engine: cached.engine,
+        // Unchanged by the cache: a draft is a draft however fast it arrived.
+        needs_manual_entry: false
+      });
     }
 
-    await logAuditEvent({
-      actorId: req.user.id,
-      actorRole: req.user.role,
-      action: 'DOCUMENT_UPLOADED',
-      entityType: 'PATIENT_DOCUMENTS',
-      entityId: doc.id,
-      metadata: {
-        document_type: kind,
-        files: files.length,
-        pages_read: result.extracted_data?.pages_read ?? 0,
-        engine: result.ocr_engine
-      },
-      ip: req.ip
-    });
+    /*
+     * Hand back a job id and let the operator start typing.
+     *
+     * The model needs 23-29 seconds and the health worker already knows the
+     * patient's name and the date. Making them watch a spinner before they can
+     * enter what they already know was the most wasteful thing this screen did.
+     */
+    const job = await createJob({ patientId: aadhaar, visitId: visit_id, kind, hash, actor: req.user });
 
-    return res.status(201).json({
-      document: doc,
-      extraction: result.extracted_data,
-      raw_ocr: result.raw_text,
-      engine: result.ocr_engine,
-      files_read: result.files_read,
-      confidence: result.confidence,
-      // Nothing from here reaches the clinical record until a human confirms it.
-      needs_manual_entry: result.needs_manual_entry
+    if (!job) {
+      // The job table is unavailable. Fall back to the synchronous path rather
+      // than failing the upload: slow is a worse experience, not a broken one.
+      const result = await processMedicalDocument(files, kind);
+      const doc = await writeDocumentRow(result.extracted_data, result.raw_text);
+      await logAuditEvent({
+        actorId: req.user.id, actorRole: req.user.role,
+        action: 'DOCUMENT_UPLOADED', entityType: 'PATIENT_DOCUMENTS', entityId: doc.id,
+        metadata: { document_type: kind, files: files.length, engine: result.ocr_engine, mode: 'sync-fallback' },
+        ip: req.ip
+      });
+      return res.status(201).json({
+        document: doc,
+        extraction: result.extracted_data,
+        raw_ocr: result.raw_text,
+        engine: result.ocr_engine,
+        files_read: result.files_read,
+        confidence: result.confidence,
+        needs_manual_entry: result.needs_manual_entry
+      });
+    }
+
+    res.status(202).json({ job_id: job.id, status: 'queued', document_type: kind, visit_id: visit_id || null });
+
+    // Deliberately not awaited: the response has already gone. Every failure
+    // inside is handled there and lands the job in a terminal state.
+    processJob({
+      jobId: job.id,
+      files,
+      kind,
+      actor: req.user,
+      visitId: visit_id,
+      onExtracted: async (result) => {
+        const doc = await writeDocumentRow(result.extracted_data, result.raw_text);
+        await logAuditEvent({
+          actorId: req.user.id, actorRole: req.user.role,
+          action: 'DOCUMENT_UPLOADED', entityType: 'PATIENT_DOCUMENTS', entityId: doc.id,
+          metadata: { document_type: kind, files: files.length, engine: result.ocr_engine, mode: 'async' },
+          ip: req.ip
+        });
+        return doc.id;
+      }
     });
+    return undefined;
   } catch (error) {
     console.error('Document upload error:', error.message);
-    return res.status(500).json({ error: 'Document upload failed.' });
+    if (!res.headersSent) return res.status(500).json({ error: 'Document upload failed.' });
+    return undefined;
   }
+};
+
+/**
+ * GET /api/documents/jobs/:id
+ *
+ * The draft, once it is ready. Scoped to whoever asked for it — a job id is a
+ * bearer token for a clinical extraction, and guessing one must not be enough
+ * to read another clinic's prescription.
+ */
+export const getDocumentJob = async (req, res) => {
+  const job = await getJob(req.params.id, req.user);
+  if (!job) return res.status(404).json({ error: 'No such job.' });
+
+  return res.json({
+    job_id: job.id,
+    status: job.status,
+    extraction: job.extraction || null,
+    raw_ocr: job.raw_text || null,
+    engine: job.engine || null,
+    document_id: job.document_id || null,
+    visit_id: job.visit_id || null,
+    error: job.error || null,
+    // A timeout is not a failure the operator can do anything about except
+    // type the details in, so say that rather than offering a retry loop.
+    needs_manual_entry: job.status === 'timeout' || job.status === 'failed'
+  });
 };
 
 /**
