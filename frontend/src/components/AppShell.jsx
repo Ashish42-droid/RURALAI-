@@ -9,6 +9,8 @@ import { useTheme } from '../context/ThemeContext';
 import NotificationBell from './NotificationBell';
 import { ROLES, ROLE_LABEL, ADMIN_ROLES } from '../config/roles';
 import { cn } from './ui';
+import { LanguageSwitcher } from './LanguageGate';
+import { useT } from '../i18n/index.jsx';
 
 /**
  * Application shell.
@@ -22,16 +24,16 @@ import { cn } from './ui';
 
 const NAV_BY_ROLE = {
   [ROLES.CLINIC_ASSISTANT]: [
-    { to: '/assistant/dashboard', label: 'Patient Register', icon: Users },
-    { to: '/assistant/patients/new', label: 'Register Patient', icon: FileText }
+    { to: '/assistant/dashboard', label: 'nav.patients', fallback: 'Patient Register', icon: Users },
+    { to: '/assistant/patients/new', label: 'nav.register', fallback: 'Register Patient', icon: FileText }
   ],
   [ROLES.DOCTOR]: [
-    { to: '/doctor/queue', label: 'Review Queue', icon: Stethoscope }
+    { to: '/doctor/queue', label: 'nav.queue', fallback: 'Review Queue', icon: Stethoscope }
   ],
-  [ROLES.SUPER_ADMIN]:    [{ to: '/admin/dashboard', label: 'Administration', icon: UserCog }],
-  [ROLES.STATE_ADMIN]:    [{ to: '/admin/dashboard', label: 'Administration', icon: UserCog }],
-  [ROLES.DISTRICT_ADMIN]: [{ to: '/admin/dashboard', label: 'Administration', icon: UserCog }],
-  [ROLES.AUDITOR]:        [{ to: '/admin/audit', label: 'Audit Trail', icon: ShieldCheck }]
+  [ROLES.SUPER_ADMIN]:    [{ to: '/admin/dashboard', label: 'nav.admin', fallback: 'Administration', icon: UserCog }],
+  [ROLES.STATE_ADMIN]:    [{ to: '/admin/dashboard', label: 'nav.admin', fallback: 'Administration', icon: UserCog }],
+  [ROLES.DISTRICT_ADMIN]: [{ to: '/admin/dashboard', label: 'nav.admin', fallback: 'Administration', icon: UserCog }],
+  [ROLES.AUDITOR]:        [{ to: '/admin/audit', label: 'nav.audit', fallback: 'Audit Trail', icon: ShieldCheck }]
 };
 
 function ThemeToggle() {
@@ -54,9 +56,10 @@ function ThemeToggle() {
 
 function NavLinks({ items, onNavigate }) {
   const { pathname } = useLocation();
+  const t = useT();
   return (
     <nav className="space-y-1" aria-label="Main">
-      {items.map(({ to, label, icon: Icon }) => {
+      {items.map(({ to, label, fallback, icon: Icon }) => {
         const active = pathname === to || pathname.startsWith(`${to}/`);
         return (
           <Link
@@ -72,7 +75,7 @@ function NavLinks({ items, onNavigate }) {
             )}
           >
             <Icon className="w-4 h-4 shrink-0" />
-            <span className="truncate">{label}</span>
+            <span className="truncate">{t(label, fallback)}</span>
             {active && <ChevronRight className="w-4 h-4 ml-auto shrink-0" />}
           </Link>
         );
@@ -101,6 +104,7 @@ function Masthead() {
 
 export default function AppShell({ children }) {
   const { user, logoutUser } = useAuth();
+  const t = useT();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -143,7 +147,7 @@ export default function AppShell({ children }) {
             <NavLinks items={items} onNavigate={() => setMobileOpen(false)} />
           </>
         ) : (
-          <NavLinks items={[{ to: '/login', label: 'Staff Sign In', icon: ShieldCheck }]} />
+          <NavLinks items={[{ to: '/login', label: 'auth.signin', fallback: 'Staff Sign In', icon: ShieldCheck }]} />
         )}
 
         <div className="mt-6 px-3">
@@ -172,7 +176,7 @@ export default function AppShell({ children }) {
             onClick={handleLogout}
             className="mt-2 w-full flex items-center gap-2 px-3 py-2 rounded-field text-xs font-semibold text-ink-muted hover:bg-surface-sunken hover:text-tier-emergency transition-colors"
           >
-            <LogOut className="w-4 h-4" /> Sign out
+            <LogOut className="w-4 h-4" /> {t('nav.signout', 'Sign out')}
           </button>
         </div>
       )}
@@ -216,7 +220,7 @@ export default function AppShell({ children }) {
           id="mobile-nav"
           role="dialog"
           aria-modal="true"
-          aria-label="Navigation"
+          aria-label={t('nav.title', 'Navigation')}
           aria-hidden={!mobileOpen}
           // Keeps a closed drawer out of the tab order — otherwise keyboard
           // focus walks into an invisible panel.
@@ -259,11 +263,12 @@ export default function AppShell({ children }) {
                 <div className="lg:hidden min-w-0"><Masthead /></div>
                 <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-tier-lowBg text-tier-low text-[11px] font-semibold">
                   <span className="w-1.5 h-1.5 rounded-full bg-tier-low animate-pulse" />
-                  Network online
+                  {t('status.online', 'Network online')}
                 </span>
               </div>
 
               <div className="flex items-center gap-1">
+                <LanguageSwitcher />
                 <ThemeToggle />
                 {user && <NotificationBell />}
                 {isAdmin && (

@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { describeTransportFailure } from '../services/api';
 import { homeFor } from '../config/roles';
 import { Button, Input, Alert, Card } from '../components/ui';
+import { useT } from '../i18n/index.jsx';
 
 /**
  * Staff sign-in.
@@ -25,6 +26,7 @@ const DEMO_DOCTOR = import.meta.env.VITE_DEMO_DOCTOR_EMAIL;
 const SHOW_DEMO = import.meta.env.VITE_DEMO_MODE === 'true' && Boolean(DEMO_ASSISTANT);
 
 export default function LoginPage() {
+  const t = useT();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -91,7 +93,7 @@ export default function LoginPage() {
               <span className="w-11 h-11 rounded-field bg-gov-50 dark:bg-gov-100 text-gov-600 dark:text-gov-500 flex items-center justify-center mx-auto">
                 <Lock className="w-5 h-5" />
               </span>
-              <h1 className="mt-3 font-display text-xl font-bold text-ink">Staff Sign In</h1>
+              <h1 className="mt-3 font-display text-xl font-bold text-ink">{t('auth.signin', 'Staff Sign In')}</h1>
               <p className="mt-1 text-xs text-ink-muted leading-relaxed">
                 Your dashboard and the records you can reach are determined by the role
                 your administrator assigned to this account.
@@ -100,7 +102,7 @@ export default function LoginPage() {
 
             <form onSubmit={submit} className="space-y-4">
               <Input
-                label="Email address"
+                label={t('auth.email', 'Email address')}
                 id="email"
                 type="email"
                 value={email}
@@ -122,13 +124,13 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     autoComplete="current-password"
-                    placeholder="Your password"
+                    placeholder={t('auth.password', 'Your password')}
                     className="field pr-10"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showPassword ? t('auth.hidePassword', 'Hide password') : t('auth.showPassword', 'Show password')}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded text-ink-subtle hover:text-ink"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -139,7 +141,7 @@ export default function LoginPage() {
               {error && <Alert tone="danger">{error}</Alert>}
 
               <Button type="submit" size="lg" loading={loading} className="w-full">
-                {loading ? 'Verifying…' : 'Sign In'}
+                {loading ? t('auth.verifying', 'Verifying…') : t('auth.submit', 'Sign In')}
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </Button>
             </form>

@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { RealtimeProvider } from './context/RealtimeContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { I18nProvider } from './i18n/index.jsx';
+import { LanguageGate } from './components/LanguageGate';
 
 import AppShell from './components/AppShell';
 import RequireRole from './components/RequireRole';
@@ -38,6 +40,10 @@ const OVERSIGHT = [...ADMIN_ROLES, ROLES.AUDITOR];
 export default function App() {
   return (
     <ThemeProvider>
+    <I18nProvider>
+    {/* Asked before anything else: the first thing this interface requires is
+        the ability to read it. */}
+    <LanguageGate />
     <AuthProvider>
       <RealtimeProvider>
       <div className="min-h-screen relative font-sans">
@@ -92,6 +98,7 @@ export default function App() {
       </div>
       </RealtimeProvider>
     </AuthProvider>
+    </I18nProvider>
     </ThemeProvider>
   );
 }
