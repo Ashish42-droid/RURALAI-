@@ -1,14 +1,19 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { rankFacilities, estimateTravelMinutes, CAPABILITIES } from './facilityRanking.js';
 
 /**
- * HIGH-risk referral routing.
+ * EMERGENCY and HIGH referral routing.
  *
- * Finds the nearest district hospital from real coordinates. No Google Maps key
- * is required, which matters for two reasons: a rural sub-centre may be on a
- * poor link when this screen is needed most, and a referral must not fail
- * because a billing quota was exceeded.
+ * Ranks credible nearby facilities — government and private — by what they can
+ * treat, what they will cost the family, how good they are and how far away
+ * they are, in that order. facilityRanking.js holds the decision itself; this
+ * file finds the candidates, measures them and assembles the payload.
+ *
+ * No Google Maps key is required, which matters for two reasons: a rural
+ * sub-centre may be on a poor link when this screen is needed most, and a
+ * referral must not fail because a billing quota was exceeded.
  *
  * If GOOGLE_MAPS_API_KEY is set, straight-line distance is upgraded to live
  * driving distance and time — but the straight-line answer is always computed
@@ -82,6 +87,45 @@ export const directionsUrl = (fromLat, fromLon, toLat, toLon) => {
 };
 
 /**
+ * What this case actually needs a facility to be able to do.
+ *
+ * Derived here, on the server, from the assessment — never accepted from the
+ * client. A request that could name its own required capabilities could also
+ * name none, and quietly turn the capability gate off.
+ *
+ * Conservative by construction: a keyword that might mean obstetric
+ * haemorrhage adds both obstetric care and a blood bank, because the cost of
+ * over-specifying is a slightly longer drive and the cost of under-specifying
+ * is arriving somewhere that cannot help.
+ */
+export const capabilitiesForCase = ({ tier, text = '', ageYears = null } = {}) => {
+  const t = String(text || '').toLowerCase();
+  const needs = new Set();
+
+  const any = (...words) => words.some((w) => t.includes(w));
+
+  if (any('injur', 'fracture', 'accident', 'trauma', 'burn', 'road traffic', 'fall from'))
+    needs.add('trauma');
+
+  if (any('pregnan', 'post-partum', 'postpartum', 'delivery', 'labour', 'labor',
+          'eclampsia', 'obstetric', 'p/v bleed', 'per vaginal'))
+    { needs.add('obstetric'); needs.add('blood_bank'); }
+
+  if (any('bleed', 'haemorrhage', 'hemorrhage', 'anaemia', 'anemia', 'transfusion'))
+    needs.add('blood_bank');
+
+  if (any('chest pain', 'cardiac', 'heart attack', 'myocardial', 'angina', 'palpitation'))
+    needs.add('cardiac');
+
+  if (Number.isFinite(ageYears) && ageYears < 12) needs.add('paediatric');
+
+  // An unstable patient needs somewhere that can hold them, whatever the cause.
+  if (String(tier).toUpperCase() === 'EMERGENCY') needs.add('icu');
+
+  return [...needs].filter((c) => CAPABILITIES.includes(c));
+};
+
+/**
  * Nearest hospitals to a point, closest first.
  *
  * @param {number} lat
@@ -104,14 +148,49 @@ export const nearestHospitals = (lat, lon, limit = 3) => {
  * phone rather than showing a number that would be invented. See the _meta
  * block in up_district_hospitals.json.
  */
-export const buildReferral = async ({ districtName, lat, lon }) => {
+export const buildReferral = async ({ districtName, lat, lon, tier = 'HIGH', required = [] }) => {
   const home = hospitalForDistrict(districtName);
   const originLat = Number.isFinite(lat) ? lat : home?.lat;
   const originLon = Number.isFinite(lon) ? lon : home?.lon;
 
-  const withRoute = (h) => (h ? { ...h, directions_url: directionsUrl(originLat, originLon, h.lat, h.lon) } : null);
+  /*
+   * Only what the screen needs, over a link that may be barely working.
+   *
+   * `sources` is per-field provenance for the dataset — it belongs in the file
+   * and in review, not in a response a phone downloads during an emergency;
+   * with three facilities it was the largest thing in the payload.
+   *
+   * `bed_count` is surfaced as `licensed_beds`. It is static licensed capacity
+   * and NOT a live free-bed count, and naming it so is the difference between
+   * a quality signal and a dangerous implication. Nothing on this screen knows
+   * whether a bed is free — see capacity_status.
+   */
+  const withRoute = (h) => {
+    if (!h) return null;
+    const { sources, bed_count: bedCount, ...rest } = h;
+    return {
+      ...rest,
+      licensed_beds: bedCount ?? null,
+      directions_url: directionsUrl(originLat, originLon, h.lat, h.lon)
+    };
+  };
 
-  const options = nearestHospitals(originLat, originLon, 3).map(withRoute);
+  /*
+   * Rank a wider candidate pool than we return.
+   *
+   * Taking the three nearest and then ranking those would let distance make
+   * the decision before capability ever got a vote — the exact failure this
+   * feature exists to fix. Twelve is deep enough that a capable or empanelled
+   * facility a little further out can win, and shallow enough to stay
+   * instant with no network call.
+   */
+  const pool = nearestHospitals(originLat, originLon, 12).map((h) => ({
+    ...h,
+    travel_minutes: estimateTravelMinutes(h.straight_line_km),
+    travel_time_source: 'estimated'
+  }));
+
+  const options = rankFacilities({ facilities: pool, tier, required, limit: 3 }).map(withRoute);
   const primary = options[0] || withRoute(home) || null;
 
   const referral = {
@@ -129,6 +208,12 @@ export const buildReferral = async ({ districtName, lat, lon }) => {
       { number: '112', label: 'National emergency number' }
     ],
     emergency_line: '108',
+    // Returned so the screen, and anyone reading the audit row later, can see
+    // what the ranking was actually asked to optimise for.
+    tier,
+    required_capabilities: required,
+    ranking: 'capability > affordability (PM-JAY) > quality (NABH, type, beds) > travel time',
+    rating_disclaimer: 'Public review scores are shown only where available and are not a measure of clinical quality.',
     // Stated explicitly so the UI cannot quietly imply we know bed status.
     capacity_status: 'UNKNOWN',
     capacity_instruction:

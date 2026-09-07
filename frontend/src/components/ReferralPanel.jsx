@@ -45,7 +45,15 @@ const COPY = {
     noFix: 'No location fix yet — showing distance from your clinic district.',
     noGeo: 'This device cannot report a location — showing distance from your clinic district.',
     outOfBounds: 'That location reading looked wrong, so your clinic district was used instead.',
-    loadFailed: 'Could not load hospital details. Call 108 for an ambulance.'
+    loadFailed: 'Could not load hospital details. Call 108 for an ambulance.',
+    callHospital: 'Call the hospital',
+    confirmCapacity: 'Call to confirm capacity before travelling',
+    capabilityUnverified: 'Services not verified — ask when you call',
+    capabilityConfirmed: 'Listed for this kind of case',
+    nabh: 'NABH accredited',
+    beds: 'licensed beds',
+    ratingNote: 'Public review score — not a measure of clinical quality',
+    whyFirst: 'Why this one'
   },
   hi: {
     title: 'अभी अस्पताल भेजें',
@@ -65,23 +73,75 @@ const COPY = {
     noFix: 'अभी लोकेशन नहीं मिली — आपके ज़िले से दूरी दिखाई जा रही है।',
     noGeo: 'यह डिवाइस लोकेशन नहीं बता सकता — ज़िले से दूरी दिखाई जा रही है।',
     outOfBounds: 'लोकेशन ठीक नहीं लगी, इसलिए आपके ज़िले से दूरी दिखाई गई है।',
-    loadFailed: 'अस्पताल की जानकारी नहीं मिली। एम्बुलेंस के लिए 108 पर कॉल करें।'
+    loadFailed: 'अस्पताल की जानकारी नहीं मिली। एम्बुलेंस के लिए 108 पर कॉल करें।',
+    callHospital: 'अस्पताल को कॉल करें',
+    confirmCapacity: 'जाने से पहले फ़ोन करके जगह की पुष्टि करें',
+    capabilityUnverified: 'सुविधाओं की पुष्टि नहीं — कॉल करके पूछें',
+    capabilityConfirmed: 'इस तरह के मामले के लिए सूचीबद्ध',
+    nabh: 'NABH मान्यता प्राप्त',
+    beds: 'स्वीकृत बिस्तर',
+    ratingNote: 'सार्वजनिक रेटिंग — चिकित्सा गुणवत्ता का माप नहीं',
+    whyFirst: 'यह क्यों'
   }
 };
 
-/** One hospital, with its distance labelled for how it was derived. */
+/**
+ * One facility, with the four things that decide whether to go there.
+ *
+ * The cost line is given the most weight after the name. For a landless family
+ * the difference between a cashless PM-JAY admission and an unempanelled
+ * private hospital is not a preference — it is whether the treatment happens
+ * at all, and whether the family is still solvent afterwards.
+ *
+ * Capability is stated honestly, including when it is unknown. "Services not
+ * verified" is worse copy than silence and better medicine: it sends the
+ * health worker to the phone, which is the only place the answer exists.
+ */
 function Hospital({ h, t, compact }) {
   const km = h.road_distance_km ?? h.straight_line_km;
   const label = h.road_distance_km != null ? t.byRoad : t.straightLine;
+  const time = h.driving_time_text || (h.travel_minutes != null ? `~${h.travel_minutes} min` : null);
+
+  const costTone = {
+    government: 'text-tier-low',
+    pmjay: 'text-tier-low',
+    chargeable: 'text-tier-emergency',
+    unknown: 'text-tier-moderate'
+  }[h.cost?.status] || 'text-ink-muted';
+
   return (
-    <div className={compact ? 'py-2' : ''}>
+    <div className={compact ? 'py-2 min-w-0' : 'min-w-0'}>
       <p className={compact ? 'text-sm font-semibold text-ink' : 'text-lg font-bold text-ink'}>{h.name}</p>
-      <p className="text-xs text-ink-muted flex items-center gap-1.5 mt-0.5">
+
+      <p className="text-xs text-ink-muted flex items-center gap-1.5 mt-0.5 flex-wrap">
         <MapPin className="w-3.5 h-3.5 shrink-0" />
         {h.district}
         {km != null && <> · {km} km {label}</>}
-        {h.driving_time_text && <> · {h.driving_time_text}</>}
+        {time && <> · {time}</>}
       </p>
+
+      {h.cost?.line && (
+        <p className={`text-[11px] font-semibold mt-1 ${costTone}`}>{h.cost.line}</p>
+      )}
+
+      {!compact && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11px] text-ink-muted">
+          {h.capability === 'unverified' && (
+            <span className="text-tier-moderate font-semibold">{t.capabilityUnverified}</span>
+          )}
+          {h.capability === 'confirmed' && (
+            <span className="text-tier-low font-semibold">{t.capabilityConfirmed}</span>
+          )}
+          {h.nabh_accredited === true && <span>{t.nabh}</span>}
+          {h.licensed_beds != null && <span>{h.licensed_beds} {t.beds}</span>}
+        </div>
+      )}
+
+      {!compact && h.public_rating != null && (
+        <p className="text-[11px] text-ink-subtle mt-1">
+          {h.public_rating} ★ — {t.ratingNote}
+        </p>
+      )}
     </div>
   );
 }
@@ -232,16 +292,31 @@ export default function ReferralPanel({ visitId, riskLevel, language = 'Hindi', 
               {data.origin?.source === 'gps' ? t.fromGps : t.fromDistrict}
             </p>
 
-            {primary.directions_url && (
-              <a
-                href={primary.directions_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-3 rounded-field border-2 border-gov-600 text-gov-700 dark:text-gov-500 font-semibold text-sm hover:bg-gov-50 dark:hover:bg-gov-100 transition-colors"
-              >
-                <Navigation className="w-4 h-4" /> {t.directions}
-              </a>
-            )}
+            {/* The hospital's own number sits beside the route button, not under
+                it. Ringing ahead is the step that stops a critical patient
+                being driven somewhere that cannot admit them, and a button that
+                looks secondary gets treated as optional. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {primary.phone && (
+                <a
+                  href={`tel:${String(primary.phone).replace(/\s+/g, '')}`}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-field border-2 border-tier-emergency text-tier-emergency font-semibold text-sm hover:bg-tier-emergencyBg transition-colors"
+                >
+                  <Phone className="w-4 h-4" /> {t.callHospital}
+                </a>
+              )}
+              {primary.directions_url && (
+                <a
+                  href={primary.directions_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-field border-2 border-gov-600 text-gov-700 dark:text-gov-500 font-semibold text-sm hover:bg-gov-50 dark:hover:bg-gov-100 transition-colors"
+                >
+                  <Navigation className="w-4 h-4" /> {t.directions}
+                </a>
+              )}
+            </div>
+            <p className="text-[11px] text-tier-emergency font-semibold text-center">{t.confirmCapacity}</p>
 
             {data.alternatives?.length > 0 && (
               <div className="pt-1">

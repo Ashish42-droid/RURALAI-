@@ -158,7 +158,11 @@ describe('building a referral with no maps key', () => {
     const r = await buildReferral({ districtName: 'Lucknow', lat: LUCKNOW.lat, lon: LUCKNOW.lon });
     expect(r.capacity_status).toBe('UNKNOWN');
     expect(r.capacity_instruction).toMatch(/confirm capacity/i);
-    expect(JSON.stringify(r)).not.toMatch(/beds_available|free_beds|bed_count/i);
+    // The guarantee is about AVAILABILITY, which nothing here can know.
+    // `licensed_beds` is static licensed capacity and is allowed — it is a
+    // quality signal, and it is named so it can never be read as "beds free".
+    expect(JSON.stringify(r)).not.toMatch(/beds_available|free_beds|beds_free|vacant/i);
+    expect(JSON.stringify(r)).not.toMatch(/"bed_count"/);
   });
 
   it('offers the national emergency lines, 108 first', async () => {

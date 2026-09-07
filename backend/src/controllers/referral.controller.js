@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { logAuditEvent } from '../middleware/audit.middleware.js';
-import { buildReferral, withinIndia } from '../services/referralService.js';
+import { buildReferral, withinIndia, capabilitiesForCase } from '../services/referralService.js';
 
 /**
  * Emergency referral routing.
@@ -54,10 +54,44 @@ export const nearestHospital = async (req, res) => {
     districtName = data?.name || null;
   }
 
+  /*
+   * The tier and the required capabilities come from the visit, not the body.
+   *
+   * A client that could declare its own tier could declare EMERGENCY to force
+   * nearest-wins routing, or declare no capabilities and turn the capability
+   * gate off entirely. Both are quiet ways to send a patient somewhere that
+   * cannot treat them, so both are read from the record instead.
+   */
+  let tier = 'HIGH';
+  let required = [];
+  if (visit_id) {
+    const { data: visit } = await supabaseAdmin
+      .from('visits')
+      .select('risk_level, chief_complaint, symptoms, patients ( date_of_birth )')
+      .eq('id', visit_id)
+      .eq('district_id', req.user.districtId)
+      .maybeSingle();
+
+    if (visit) {
+      tier = String(visit.risk_level || 'high').toUpperCase() === 'EMERGENCY' ? 'EMERGENCY' : 'HIGH';
+      const dob = Array.isArray(visit.patients) ? visit.patients[0]?.date_of_birth : visit.patients?.date_of_birth;
+      const ageYears = dob
+        ? Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 3600 * 1000))
+        : null;
+      required = capabilitiesForCase({
+        tier,
+        text: [visit.chief_complaint, visit.symptoms].filter(Boolean).join(' '),
+        ageYears
+      });
+    }
+  }
+
   const referral = await buildReferral({
     districtName,
     lat: usable ? lat : null,
-    lon: usable ? lon : null
+    lon: usable ? lon : null,
+    tier,
+    required
   });
 
   const originSource = usable ? 'gps' : 'district';
@@ -76,7 +110,6 @@ export const nearestHospital = async (req, res) => {
   if (referral.primary) {
     const { error } = await supabaseAdmin.from('referrals').insert([{
       visit_id: visit_id || null,
-      risk_level: null,
       origin_lat: usable ? lat : (referral.primary.lat ?? null),
       origin_lon: usable ? lon : (referral.primary.lon ?? null),
       origin_source: originSource,
@@ -88,6 +121,15 @@ export const nearestHospital = async (req, res) => {
       distance_km: referral.primary.road_distance_km ?? referral.primary.straight_line_km ?? null,
       distance_source: referral.distance_source,
       eta_text: referral.primary.driving_time_text || null,
+      risk_level: tier,
+      // What the ranking was told to look for and what it concluded. The
+      // enquiry after a bad outcome asks why THIS hospital, and "nearest" is
+      // no longer the whole answer.
+      required_capabilities: required.length ? required : null,
+      facility_ownership: referral.primary.ownership || null,
+      facility_pmjay: referral.primary.pmjay_empanelled ?? null,
+      facility_capability_status: referral.primary.capability || null,
+      rank_basis: referral.primary.rank_basis || null,
       referred_by: req.user.id,
       district_id: req.user.districtId || null
     }]);
@@ -97,7 +139,14 @@ export const nearestHospital = async (req, res) => {
   await logAuditEvent({
     actorId: req.user.id, actorRole: req.user.role,
     action: 'REFERRAL_ROUTED', entityType: 'VISITS', entityId: visit_id || null,
-    metadata: { hospital: referral.primary?.name, origin_source: originSource },
+    metadata: {
+      hospital: referral.primary?.name,
+      origin_source: originSource,
+      tier,
+      required_capabilities: required,
+      capability_status: referral.primary?.capability,
+      pmjay: referral.primary?.pmjay_empanelled ?? null
+    },
     ip: req.ip
   });
 
