@@ -249,14 +249,23 @@ const arg = (name) => {
 const main = async () => {
   loadEnv();
 
-  if (!process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY) {
-    console.error('No GROQ_API_KEY or GEMINI_API_KEY found (checked the environment and backend/.env).');
-    console.error('Both are already used by this project; either one is enough for this script.');
-    return 1;
-  }
-
   const dryRun = process.argv.includes('--dry-run');
   const force = process.argv.includes('--force');
+
+  /*
+   * The key is only needed to actually translate.
+   *
+   * This check used to run first, which meant `--dry-run` — the one mode that
+   * makes no model calls at all — refused to run without a key. That is
+   * backwards: a dry run is what you want before deciding whether to spend the
+   * calls, and often before the key is set up.
+   */
+  if (!dryRun && !process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY) {
+    console.error('No GROQ_API_KEY or GEMINI_API_KEY found (checked the environment and backend/.env).');
+    console.error('Both are already used by this project; either one is enough for this script.');
+    console.error('Run with --dry-run to see what would be translated without a key.');
+    return 1;
+  }
   const offered = readOffered();
   const all = readLanguages().filter((l) => l.code !== 'en' && offered.has(l.code));
 
@@ -326,6 +335,11 @@ const main = async () => {
     const finalPct = Math.round((Object.keys(result).length / enKeys.length) * 100);
     console.log(`      wrote ${done} string(s) → ${finalPct}% coverage`
       + (rejected ? `, ${rejected} rejected for a broken placeholder` : ''));
+  }
+
+  if (dryRun) {
+    console.log('\nDry run — nothing was written. Re-run without --dry-run to translate.');
+    return 0;
   }
 
   console.log('\nDone. These are machine translations: `reviewed` in languages.js is unchanged,');
