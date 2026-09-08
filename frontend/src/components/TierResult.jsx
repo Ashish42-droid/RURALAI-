@@ -11,6 +11,7 @@ import SpeakButton, { assessmentToSpeech } from './SpeakButton';
 // button on this screen threw a ReferenceError instead of downloading.
 import { downloadVisitReport } from '../services/reportDownload';
 import { useI18n } from '../i18n/index.jsx';
+import { serverText } from '../i18n/serverLabels.js';
 
 /**
  * The tiered assessment result — spec §3.6.
@@ -111,7 +112,7 @@ export default function TierResult({ workflow, assessment, visitId, onScheduleCo
               'mt-2 font-display text-lg font-bold',
               tier === 'HIGH' ? 'text-tier-emergency' : tier === 'MEDIUM' ? 'text-tier-moderate' : 'text-tier-low'
             )}>
-              {workflow.headline}
+              {serverText(t, workflow, 'headline')}
             </h3>
           </div>
 
@@ -158,7 +159,7 @@ export default function TierResult({ workflow, assessment, visitId, onScheduleCo
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-field bg-tier-emergencyBg border border-tier-emergency/30 text-tier-emergency text-xs font-bold"
                 >
                   <Phone className="w-3.5 h-3.5" /> {l.number}
-                  <span className="font-normal text-[10px] opacity-80">{l.label}</span>
+                  <span className="font-normal text-[10px] opacity-80">{serverText(t, l, 'label')}</span>
                 </a>
               ))}
             </div>
@@ -167,7 +168,7 @@ export default function TierResult({ workflow, assessment, visitId, onScheduleCo
                 hospitals, and a fabricated number here would be the most
                 dangerous thing on the screen. */}
             <Alert tone="warning" icon={AlertTriangle} title={t('referral.bedsUnconfirmed', 'Bed availability not confirmed')}>
-              {workflow.referral.capacity_instruction}
+              {serverText(t, workflow.referral, 'capacity_instruction')}
             </Alert>
           </div>
         </Card>
@@ -187,9 +188,15 @@ export default function TierResult({ workflow, assessment, visitId, onScheduleCo
               <p className="text-xs text-ink-muted mt-0.5">
                 {t('consult.routedTo', 'Routed to')}{' '}
                 <strong className="text-ink">{workflow.consultation.speciality}</strong> ·{' '}
-                {workflow.consultation.routing_basis}
+                {/* The candidate names are clinical data and stay as sent;
+                    only the phrase introducing them is translated. */}
+                {workflow.consultation.routing_candidates?.length
+                  ? t('workflow.routing.candidates', 'disease candidates: {list}', {
+                    list: workflow.consultation.routing_candidates.join(', ')
+                  })
+                  : serverText(t, workflow.consultation, 'routing_basis')}
               </p>
-              <p className="text-[11px] text-ink-subtle mt-1">{workflow.consultation.note}</p>
+              <p className="text-[11px] text-ink-subtle mt-1">{serverText(t, workflow.consultation, 'note')}</p>
             </div>
             <Button onClick={onScheduleConsultation} className="shrink-0">
               <Stethoscope className="w-4 h-4" /> {t('consult.findDoctor', 'Find a doctor')}
@@ -257,7 +264,7 @@ export default function TierResult({ workflow, assessment, visitId, onScheduleCo
               )}
             </div>
           ) : (
-            <p className="text-xs text-ink-muted">{workflow.medication?.reason}</p>
+            <p className="text-xs text-ink-muted">{serverText(t, workflow.medication, 'reason')}</p>
           )}
         </Section>
 
@@ -304,7 +311,7 @@ export default function TierResult({ workflow, assessment, visitId, onScheduleCo
               : t('queue.daily', 'Queued for daily doctor review')
         }
       >
-        {workflow.doctor_action?.note}
+        {serverText(t, workflow.doctor_action, 'note')}
       </Alert>
     </div>
   );

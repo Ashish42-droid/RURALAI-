@@ -168,7 +168,12 @@ export const analyzePatientCase = async (req, res) => {
       visit: visit || {},
       vitals: vitals || {},
       verifiedDocuments: verifiedDocs,
-      imageObservations: imageObservations
+      imageObservations: imageObservations,
+      // The language the assistant is working in. Only the prose the model
+      // writes moves; risk_level and recommended_next_action stay English
+      // enums, and the rule engine reads the same untouched inputs it always
+      // did — see languageDirective in aiOrchestrator.js.
+      language: languageForRequest(req).code
     });
 
     /*

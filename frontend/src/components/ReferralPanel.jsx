@@ -5,6 +5,7 @@ import {
 import api from '../services/api';
 import { Button, Card, cn } from './ui';
 import { useI18n } from '../i18n/index.jsx';
+import { serverText } from '../i18n/serverLabels.js';
 
 /**
  * Emergency referral — where to take this patient, and how to get there.
@@ -369,7 +370,7 @@ export default function ReferralPanel({ visitId, riskLevel, className }) {
               <a
                 key={l.number}
                 href={`tel:${l.number}`}
-                title={l.label}
+                title={serverText(translate, l, 'label')}
                 className="px-2.5 py-1.5 rounded-field border border-line text-[11px] font-semibold text-ink-muted hover:bg-surface-sunken"
               >
                 {l.number}

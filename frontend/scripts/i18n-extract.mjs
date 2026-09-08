@@ -259,6 +259,86 @@ const DYNAMIC_KEYS = {
   'handoff.photoOne': '{count} wound photo',
   'handoff.photoMany': '{count} wound photos',
 
+  /*
+   * Fixed prose the API emits with a key beside it — see serverText() in
+   * i18n/serverLabels.js and the note in backend tierWorkflowService.js.
+   *
+   * These never appear as a t() call in this repo because the key arrives over
+   * the wire, so they have to be declared. The English here must stay in step
+   * with the English the server sends; it is the same sentence, and the server
+   * copy is what a log or an API consumer sees.
+   */
+  'workflow.low.headline': 'Protocol care — complete plan issued',
+  'workflow.low.note': 'Queued for the doctor’s daily review. The assistant may act on this plan now.',
+  'workflow.medium.headline': 'Video consultation required before treatment',
+  'workflow.medium.note': 'A doctor must see this patient before any treatment is given.',
+  'workflow.medium.consultNote': 'The doctor’s review returns to this screen when the call ends.',
+  'workflow.high.headline': 'Refer immediately — danger zone',
+  'workflow.high.note': 'No doctor queue entry. A referral notice is recorded and the case is closed for offline review.',
+  'workflow.medication.referred': 'No medication is issued — this patient is being referred to hospital.',
+  'workflow.medication.doctorDecides': 'Medication is prescribed by the doctor after review. None is suggested here.',
+  'workflow.routing.general': 'no candidates — general pool',
+
+  // referralService.js — the national emergency lines and the two disclaimers.
+  'emergency.108': 'Emergency ambulance (free, 24x7)',
+  'emergency.102': 'Maternal & child health ambulance',
+  'emergency.104': 'Health helpline / advice',
+  'emergency.112': 'National emergency number',
+  'referral.capacityInstruction': 'Bed and room availability is not published as a live feed. Call the hospital or 108 to confirm capacity before transporting the patient.',
+  'referral.ratingDisclaimer': 'Public review scores are shown only where available and are not a measure of clinical quality.',
+
+  /*
+   * backend/src/services/reportPdfService.js — the generated PDF reports.
+   *
+   * The report renders from THIS catalogue: reportLocale.js reads
+   * frontend/src/i18n/locales/<code>.json rather than keeping a second copy of
+   * the same words on the server. Two copies of "Vitals recorded" would drift,
+   * and on a clinical document that means the printout and the screen
+   * disagreeing about what tier a patient is.
+   *
+   * So the keys live here, get translated by the same script as everything
+   * else, and the server reads the result.
+   */
+  'pdf.aiSummary': 'AI-prepared summary',
+  'pdf.alternatives': 'Alternatives: {list}',
+  'pdf.availability': 'Available in India from about Rs {price} ({count} products)',
+  'pdf.bedAvailability': 'Bed and room availability',
+  'pdf.candidateLine': '{disease} — model confidence {pct}%',
+  'pdf.candidateSource': 'Source: {source}. Top-5 accuracy {acc} on held-out data.',
+  'pdf.candidates': 'Statistical candidates (AI assistance — not a diagnosis)',
+  'pdf.chargeConsultation': 'Sub-centre consultation',
+  'pdf.chargeNote': 'No charge is payable at the sub-centre. Hospital charges, if any, are billed separately by the receiving facility.',
+  'pdf.chargeReferral': 'Referral issue',
+  'pdf.chargeTotal': 'Total payable',
+  'pdf.charges': 'Charges',
+  'pdf.clinicalDeterioration': 'Clinical deterioration',
+  'pdf.coordinates': 'Coordinates',
+  'pdf.distance': 'Distance',
+  'pdf.dose': 'Dose',
+  'pdf.emergencyContacts': 'Emergency contacts',
+  'pdf.estimatedTravel': 'Estimated travel',
+  'pdf.firstAid': 'First aid — to be performed by the clinic assistant',
+  'pdf.firstAidBefore': 'First aid given before transfer',
+  'pdf.footer': 'AI prepares the case. The doctor makes the medical decision. This document is a demonstration system output and is not a substitute for examination by a registered medical practitioner.',
+  'pdf.formularyEntry': 'Formulary entry: {id}',
+  'pdf.generated': 'Generated {when}',
+  'pdf.hospital': 'Hospital',
+  'pdf.kmStraight': '{km} km (straight line)',
+  'pdf.noFormularyMatch': 'No formulary entry matched this presentation.',
+  'pdf.noMedication': 'No medication is issued for this case.',
+  'pdf.notConfirmed': 'NOT CONFIRMED — call before transporting.',
+  'pdf.precautionsTransfer': 'Precautions during transfer',
+  'pdf.reasonForReferral': 'Reason for referral',
+  'pdf.referTo': 'Refer to',
+  'pdf.referralTitle': 'Emergency Referral',
+  'pdf.route': 'Route',
+  'pdf.signatureLine': 'Registered medical practitioner',
+  'pdf.summaryTitle': 'Clinical Assessment Summary',
+  'pdf.unsignedFormulary': 'WARNING: this formulary is UNSIGNED. These entries have not been reviewed by a registered medical practitioner for this deployment and must not be dispensed.',
+  'pdf.urgentBanner': 'URGENT — REFER TO DISTRICT HOSPITAL NOW',
+  'pdf.visitCode': 'Visit code',
+  'pdf.vitalsRecorded': 'Vitals recorded',
+
   // AppShell.jsx — NAV_BY_ROLE entries carry the key as data, rendered by
   // t(label, fallback) inside NavLinks. The sidebar is the first thing a
   // signed-in user reads, so these matter more than most.

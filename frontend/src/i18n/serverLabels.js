@@ -106,3 +106,26 @@ export const humaniseEnum = (value) => {
   const s = String(value).replace(/_/g, ' ').toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
+
+/**
+ * Render a server field that arrives as a `<name>` / `<name>_key` pair.
+ *
+ * Several services emit fixed prose with a catalogue key beside it — the tier
+ * workflow's headlines and notes, the referral panel's capacity instruction,
+ * the labels on the national emergency numbers. They are enumerable and never
+ * vary by case, so translating them needs no model call and works with no
+ * connection at all, which is the opposite of what routing them through the
+ * AI path would give.
+ *
+ *   serverText(t, workflow, 'headline')
+ *   serverText(t, line, 'label')
+ *
+ * Falls back to the English the server sent, then to empty. A field the server
+ * has not yet learned to key still renders its sentence.
+ */
+export const serverText = (t, obj, field) => {
+  if (!obj) return '';
+  const english = obj[field] || '';
+  const key = obj[`${field}_key`];
+  return key ? t(key, english) : english;
+};
