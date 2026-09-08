@@ -155,6 +155,26 @@ export const I18nProvider = ({ children }) => {
     document.documentElement.dir = isRtl(lang) ? 'rtl' : 'ltr';
   }, [lang]);
 
+  /*
+   * The browser tab, too.
+   *
+   * index.html carries an English <title> because something has to be there
+   * before the bundle loads. Leaving it at that means a health worker with six
+   * tabs open picks this one out by an English string on an otherwise
+   * translated device — a small thing, and exactly the kind of small thing
+   * that adds up to an interface that is only half in your language.
+   *
+   * Runs after the catalogue lands (hence the revision dependency), so it
+   * sets the translated name rather than the English fallback it would see
+   * on the first tick.
+   */
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const name = TABLES[lang]?.['app.name'] || en['app.name'];
+    const tagline = TABLES[lang]?.['app.subtitle'] || en['app.subtitle'];
+    if (name && tagline) document.title = name + ' — ' + tagline;
+  }, [lang, revision]);
+
   /**
    * t('some.key', 'English default', { name: 'x' })
    *
