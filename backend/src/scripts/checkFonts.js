@@ -15,8 +15,28 @@
  *   node src/scripts/checkFonts.js --require  # exit non-zero if any is missing
  */
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { SCRIPT_FONT, installedScripts } from '../services/reportLocale.js';
 import { LANGUAGES } from '../config/languages.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The report reads its words from the frontend catalogue rather than keeping a
+ * second copy — see reportLocale.js. That is the right call for correctness
+ * (two copies of "Vitals recorded" drift, and on a clinical document that
+ * means the printout and the screen disagreeing about a patient's tier) and it
+ * makes the reports depend on a path outside this package.
+ *
+ * That dependency holds in every deployment shape this project uses, because
+ * the whole repository is built into one image. But if it ever stops holding
+ * the failure is silent: fonts installed, language requested, and every report
+ * still in English. So it is checked here, beside the other thing that has to
+ * be true for a report to come out right.
+ */
+const CATALOGUE_DIR = path.resolve(__dirname, '../../../frontend/src/i18n/locales');
 
 const LATIN = new Set(['en', 'kha', 'lus']);
 
@@ -56,12 +76,27 @@ const main = () => {
 
   if (blocked) {
     console.log(`  ${blocked} language(s) will print an English report that says why.`);
-    console.log('  Fonts: https://fonts.google.com/noto → backend/assets/fonts/\n');
+    console.log('  Install them with:  npm run fonts:install\n');
   } else {
     console.log('  Every offered language can be printed in its own script.\n');
   }
 
-  return process.argv.includes('--require') && blocked ? 1 : 0;
+  // The other half of a correct report: the words.
+  const haveCatalogue = fs.existsSync(CATALOGUE_DIR);
+  const localeCount = haveCatalogue
+    ? fs.readdirSync(CATALOGUE_DIR).filter((f) => f.endsWith('.json')).length
+    : 0;
+
+  if (haveCatalogue) {
+    console.log(`  Report catalogue: ${localeCount} locale file(s) found.\n`);
+  } else {
+    console.log('  Report catalogue: NOT FOUND at frontend/src/i18n/locales.');
+    console.log('  Reports would render in English whatever language is requested,');
+    console.log('  and whatever fonts are installed.\n');
+  }
+
+  const failing = (blocked && process.argv.includes('--require')) || !haveCatalogue;
+  return process.argv.includes('--require') && failing ? 1 : 0;
 };
 
 process.exit(main());

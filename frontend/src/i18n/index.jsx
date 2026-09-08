@@ -46,8 +46,14 @@ const I18nContext = createContext(null);
  * Vite resolves this glob at build time into one chunk per locale, so adding
  * `locales/xx.json` is the entire cost of adding a language — no registry to
  * update, nothing to import by hand.
+ *
+ * English is excluded on purpose. It is imported statically above because it
+ * is the fallback and has to be in memory before the first render; leaving it
+ * in the glob as well made Vite warn that one module was both statically and
+ * dynamically imported, and emit it into the main chunk anyway. Excluding it
+ * says the intent outright and keeps the build log clean.
  */
-const LOADERS = import.meta.glob('./locales/*.json');
+const LOADERS = import.meta.glob(['./locales/*.json', '!./locales/en.json']);
 
 /** Loaded tables, by code. English is present from the first tick. */
 const TABLES = { [DEFAULT_LANGUAGE]: en };

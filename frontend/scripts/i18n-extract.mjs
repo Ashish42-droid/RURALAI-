@@ -9,6 +9,18 @@
  *
  *   node scripts/i18n-extract.mjs          # rewrite locales/en.json
  *   node scripts/i18n-extract.mjs --check  # fail if it is out of date
+ *   node scripts/i18n-extract.mjs --soft   # rewrite, never exit non-zero
+ *
+ * `--soft` is what the production build runs. It regenerates the catalogue so
+ * that what ships always matches the source that shipped with it, and reports
+ * anything wrong without failing the deploy.
+ *
+ * That is deliberate. A stale catalogue, a duplicated key or a key written in
+ * a form this script cannot see are all bookkeeping mistakes the running app
+ * already survives — every call site carries its own English fallback, so the
+ * worst case is a string that renders in English. Blocking a deploy over one
+ * would take a working clinical system offline to fix something cosmetic.
+ * `--check` stays strict for CI and pre-commit, where failing is free.
  *
  * ── Three ways a key is written, and all three are read ─────────────────────
  *
@@ -423,6 +435,7 @@ const unescape = (s) => s.replace(/\\'/g, "'").replace(/\\\\/g, '\\').replace(/\
 
 const main = () => {
   const check = process.argv.includes('--check');
+  const soft = process.argv.includes('--soft');
   const found = {};
   const conflicts = [];
   const suspects = [];
@@ -463,7 +476,7 @@ const main = () => {
       console.error(`    ${c.a.file}: "${c.a.value}"`);
       console.error(`    ${c.b.file}: "${c.b.value}"`);
     }
-    process.exit(1);
+    if (!soft) process.exit(1);
   }
 
   if (suspects.length) {
@@ -498,7 +511,9 @@ const main = () => {
     for (const [key, file] of unaccounted) console.error(`  ${key.padEnd(36)} ${file}`);
     console.error('\nEither write it as t(\'key\', \'English\') / a key+label pair,');
     console.error('or add it to DYNAMIC_KEYS at the top of this script.');
-    process.exit(1);
+    // In soft mode these still render as their call-site English, so the build
+    // continues and the log carries the list.
+    if (!soft) process.exit(1);
   }
 
   const before = fs.existsSync(EN) ? JSON.parse(fs.readFileSync(EN, 'utf8')) : {};
@@ -515,6 +530,14 @@ const main = () => {
     if (added.length) console.error(`  ${added.length} new key(s): ${added.slice(0, 8).join(', ')}…`);
     if (orphaned.length) console.error(`  ${orphaned.length} orphaned: ${orphaned.slice(0, 8).join(', ')}…`);
     return 1;
+  }
+
+  const stale = JSON.stringify(before) !== JSON.stringify(sorted);
+  if (soft && stale) {
+    const added = Object.keys(sorted).filter((k) => !(k in before));
+    console.warn(`\nen.json was out of date and has been regenerated for this build.`);
+    if (added.length) console.warn(`  ${added.length} key(s) not in the committed file: ${added.slice(0, 8).join(', ')}`);
+    console.warn('  Run `npm run i18n:extract` and commit, or those keys ship untranslated.\n');
   }
 
   fs.writeFileSync(EN, `${JSON.stringify(sorted, null, 2)}\n`, 'utf8');
