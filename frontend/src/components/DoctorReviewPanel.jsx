@@ -262,7 +262,8 @@ export default function DoctorReviewPanel({ visitId, className }) {
                 variant="secondary"
                 onClick={async () => {
                   const { ok, error } = await downloadVisitReport(visitId, 'summary', {
-                    patientName: data?.patient_name
+                    patientName: data?.patient_name,
+                    t
                   });
                   if (!ok) alert(error || t('report.downloadFailed', 'The report could not be downloaded.'));
                 }}

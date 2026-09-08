@@ -56,7 +56,7 @@ export default function LoginPage() {
       // is the difference between "your network dropped" and "this build is
       // pointed at the wrong address".
       if (!err.response) {
-        setError(describeTransportFailure(err));
+        setError(describeTransportFailure(err, t));
         return;
       }
       setError(

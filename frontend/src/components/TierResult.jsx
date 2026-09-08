@@ -57,7 +57,7 @@ function PdfButtons({ visitId, tier }) {
   const open = async (type) => {
     // The report is generated server-side and comes back in the language the
     // request was made in; see reportPdfService on the API.
-    const { ok, error } = await downloadVisitReport(visitId, type);
+    const { ok, error } = await downloadVisitReport(visitId, type, { t });
     if (!ok) alert(error || t('report.downloadFailed', 'The report could not be downloaded.'));
   };
 

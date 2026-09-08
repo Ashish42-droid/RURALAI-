@@ -13,7 +13,12 @@ import { useT } from '../i18n/index.jsx';
  * authenticated pages, where a permanent banner would be tuned out within a day
  * and would compete with the tier colours that do carry clinical meaning.
  *
- * The single source of the wording. Two copies of a safety disclaimer drift.
+ * The single source of the wording. Two copies of a safety disclaimer drift —
+ * and they had: the landing page carried its own variant ending "a qualified
+ * doctor" while this one ended "a doctor registered with the National Medical
+ * Commission". Both are now this string, the more precise of the two, and both
+ * read it from the same catalogue key, so the next divergence fails the
+ * extractor rather than shipping.
  *
  * ── On translating a legal notice ───────────────────────────────────────────
  *
@@ -52,7 +57,7 @@ export default function ClinicalUseNotice({ variant = 'card', className = '' }) 
           </strong>{' '}
           {t(
             'clinical.noticeBody',
-            'This is a demonstration system. Its triage thresholds and medication list are drawn from published guidance but have not been reviewed or approved by a registered medical practitioner for this deployment. It does not provide medical advice, diagnosis, or treatment. Every clinical decision must be made by a qualified doctor.'
+            'This is a demonstration system. Its triage thresholds and medication list are drawn from published guidance but have not been reviewed or approved by a registered medical practitioner for this deployment. It does not provide medical advice, diagnosis, or treatment. Every clinical decision must be made by a doctor registered with the National Medical Commission.'
           )}
         </p>
       </div>
