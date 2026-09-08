@@ -13,6 +13,7 @@ import { logAuditEvent } from '../middleware/audit.middleware.js';
 import { ageFromDob } from '../services/patientFields.js';
 import { buildTierWorkflow } from '../services/tierWorkflowService.js';
 import { signedImageUrl } from '../services/imageAccess.js';
+import { languageForRequest } from '../config/languages.js';
 
 export const transcribeSpeech = async (req, res) => {
   try {
@@ -525,7 +526,11 @@ export const getAiServiceStatus = async (req, res) => {
  * leave them with a silent button and no explanation.
  */
 export const translateSpeechText = async (req, res) => {
-  const { text, target = 'Hindi' } = req.body || {};
-  const result = await translateForSpeech(text, target);
+  // `target` may be a code, an English name or a browser tag; the service
+  // normalises all three. When the caller says nothing, the language the
+  // request was made in is the right answer — an assistant working in Odia
+  // asking to hear a passage means Odia, not Hindi.
+  const { text, target } = req.body || {};
+  const result = await translateForSpeech(text, target || languageForRequest(req).code);
   return res.json(result);
 };
