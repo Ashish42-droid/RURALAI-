@@ -404,6 +404,24 @@ const CALL = new RegExp(`\\b(?:t|tr|translate|R)\\(\\s*'(${KEY})'\\s*,\\s*'(${ST
  *    ['decision.prescribe', 'Prescription issued']
  *    SCHEDULED: ['consult.status.scheduled', 'Scheduled']
  *    ['map.activeNow', 'Active now', 'bg-tier-low']
+ *
+ * ── The trap this pattern fell into ─────────────────────────────────────────
+ *
+ * A LIST of keys has exactly the same shape as a key/English pair:
+ *
+ *     outputKeys: [
+ *       'landing.tier.low.out1', 'landing.tier.low.out2', …
+ *     ]
+ *
+ * so the matcher happily recorded out1's English as the literal string
+ * "landing.tier.low.out2". Extracted keys override DYNAMIC_KEYS, so that
+ * clobbered the correct text, and the landing page rendered a raw dotted key
+ * where a bullet should be — the precise failure the fallback design exists to
+ * prevent. Eleven keys were wrong before this guard.
+ *
+ * The discriminator is the second capture. Real English is never shaped like a
+ * dotted key, so `isKeyShaped` below rejects the match and the value falls
+ * through to DYNAMIC_KEYS, where it is declared properly.
  */
 const PAIR = new RegExp(`'(${KEY})'\\s*,\\s*'(${STR})'`, 'g');
 
@@ -433,6 +451,15 @@ const ANY_KEY = new RegExp(`'(${KEY})'`, 'g');
 
 const unescape = (s) => s.replace(/\\'/g, "'").replace(/\\\\/g, '\\').replace(/\\n/g, '\n');
 
+/**
+ * Does this "English" actually look like another catalogue key?
+ *
+ * If so it is not a translation, it is the next entry in a list of keys, and
+ * accepting it would put a dotted key on a user's screen. See the note on
+ * PAIR above.
+ */
+const isKeyShaped = (value) => new RegExp(`^${KEY}$`).test(value);
+
 const main = () => {
   const check = process.argv.includes('--check');
   const soft = process.argv.includes('--soft');
@@ -448,6 +475,8 @@ const main = () => {
       for (const m of text.matchAll(pattern)) {
         const [, key, raw] = m;
         const value = unescape(raw);
+        // A list of keys is not a key/English pair — see PAIR above.
+        if (isKeyShaped(value)) continue;
         if (found[key] && found[key].value !== value) {
           conflicts.push({ key, a: found[key], b: { value, file: rel } });
         }
@@ -513,6 +542,21 @@ const main = () => {
     console.error('or add it to DYNAMIC_KEYS at the top of this script.');
     // In soft mode these still render as their call-site English, so the build
     // continues and the log carries the list.
+    if (!soft) process.exit(1);
+  }
+
+  /*
+   * No catalogue value may itself be a catalogue key.
+   *
+   * That only happens when something has been mis-parsed, and the symptom is a
+   * dotted key rendered to a user in place of a sentence. Cheap to check, and
+   * it is exactly the bug that shipped once already.
+   */
+  const keyShapedValues = Object.entries(sorted).filter(([, v]) => isKeyShaped(v));
+  if (keyShapedValues.length) {
+    console.error(`\n${keyShapedValues.length} key(s) whose English is itself a key:\n`);
+    for (const [k, v] of keyShapedValues) console.error(`  ${k.padEnd(38)} -> ${v}`);
+    console.error('\nSomething was mis-parsed. These would render as dotted keys on screen.');
     if (!soft) process.exit(1);
   }
 
